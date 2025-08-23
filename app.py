@@ -334,8 +334,11 @@ def create_detailed_shot_map(shot_data, team_name):
 
 def create_possession_flow_map(possession_data, team_name):
     """Visualizes possession sequences on a pitch, colored by outcome."""
+    # --- FIX: Filter out non-possession events first ---
+    possession_events = possession_data.dropna(subset=['possession.id']).copy()
+    
     # Get unique possession sequences by their ID
-    unique_possessions = possession_data.drop_duplicates(subset=['possession.id']).copy()
+    unique_possessions = possession_events.drop_duplicates(subset=['possession.id']).copy()
 
     if unique_possessions.empty:
         st.warning(f"No possession data available for {team_name}.")
@@ -353,10 +356,33 @@ def create_possession_flow_map(possession_data, team_name):
 
     # Plot arrows for each category
     for df, color in zip([ended_in_goal, ended_in_shot, ended_without_shot], ['#00FF00', '#FFFF00', '#FE6100']):
-        if not df.empty:
+        if not df.empty and 'possession.startLocation.x' in df.columns:
             pitch.arrows(df['possession.startLocation.x'], df['possession.startLocation.y'],
                          df['possession.endLocation.x'], df['possession.endLocation.y'],
                          width=2, headwidth=6, headlength=8, color=color, ax=ax, alpha=0.7)
+
+    # Create a custom legend
+    from matplotlib.lines import Line2D
+    legend_elements = [
+        Line2D([0], [0], color='#00FF00', lw=4, label='Possession leading to a Goal'),
+        Line2D([0], [0], color='#FFFF00', lw=4, label='Possession leading to a Shot'),
+        Line2D([0], [0], color='#FE6100', lw=4, label='Possession without a Shot')
+    ]
+    ax.legend(handles=legend_elements, loc='upper left', facecolor='#22312b', edgecolor='white', labelcolor='white')
+
+    # --- Create a secondary chart for flank analysis ---
+    charts = {}
+    if 'possession.attack.flank' in unique_possessions.columns:
+        flank_outcomes = unique_possessions.groupby('possession.attack.flank')[['possession.attack.withShot', 'possession.attack.withGoal']].sum().reset_index()
+        flank_outcomes.rename(columns={'possession.attack.withShot': 'Ended with Shot', 'possession.attack.withGoal': 'Ended with Goal'}, inplace=True)
+        
+        fig_flank = px.bar(flank_outcomes, x='possession.attack.flank', y=['Ended with Shot', 'Ended with Goal'],
+                           title='Attacking Flank Effectiveness', barmode='group',
+                           labels={'possession.attack.flank': 'Attacking Flank', 'value': 'Count'})
+        fig_flank.update_layout(template='plotly_dark')
+        charts['flank_analysis'] = fig_flank
+
+    return fig, charts
             
 
 def create_defensive_actions_map(defensive_events, team_name):
