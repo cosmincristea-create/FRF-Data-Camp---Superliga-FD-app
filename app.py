@@ -334,10 +334,8 @@ def create_detailed_shot_map(shot_data, team_name):
 
 def create_possession_flow_map(possession_data, team_name):
     """Visualizes possession sequences on a pitch, colored by outcome."""
-    # --- FIX: Filter out non-possession events first ---
-    possession_events = possession_data.dropna(subset=['possession.id']).copy()
-    
     # Get unique possession sequences by their ID
+    possession_events = possession_data.dropna(subset=['possession.id']).copy()
     unique_possessions = possession_events.drop_duplicates(subset=['possession.id']).copy()
 
     if unique_possessions.empty:
@@ -370,16 +368,40 @@ def create_possession_flow_map(possession_data, team_name):
     ]
     ax.legend(handles=legend_elements, loc='upper left', facecolor='#22312b', edgecolor='white', labelcolor='white')
 
-    # --- Create a secondary chart for flank analysis ---
+    # --- NEW: Create a more effective 100% stacked bar chart for flank analysis ---
     charts = {}
     if 'possession.attack.flank' in unique_possessions.columns:
-        flank_outcomes = unique_possessions.groupby('possession.attack.flank')[['possession.attack.withShot', 'possession.attack.withGoal']].sum().reset_index()
-        flank_outcomes.rename(columns={'possession.attack.withShot': 'Ended with Shot', 'possession.attack.withGoal': 'Ended with Goal'}, inplace=True)
+        # 1. Define the outcome for each possession
+        def get_outcome(row):
+            if row['possession.attack.withGoal']:
+                return 'Goal'
+            elif row['possession.attack.withShot']:
+                return 'Shot (No Goal)'
+            else:
+                return 'No Shot'
         
-        fig_flank = px.bar(flank_outcomes, x='possession.attack.flank', y=['Ended with Shot', 'Ended with Goal'],
-                           title='Attacking Flank Effectiveness', barmode='group',
-                           labels={'possession.attack.flank': 'Attacking Flank', 'value': 'Count'})
-        fig_flank.update_layout(template='plotly_dark')
+        unique_possessions['outcome'] = unique_possessions.apply(get_outcome, axis=1)
+        
+        # 2. Calculate the percentage of each outcome per flank
+        flank_effectiveness = unique_possessions.groupby('possession.attack.flank')['outcome'].value_counts(normalize=True).mul(100).rename('percentage').reset_index()
+        
+        # 3. Create the 100% stacked bar chart
+        fig_flank = px.bar(
+            flank_effectiveness,
+            x="possession.attack.flank",
+            y="percentage",
+            color="outcome",
+            title="Attacking Flank Effectiveness",
+            labels={'possession.attack.flank': 'Attacking Flank', 'percentage': 'Percentage of Possessions'},
+            text_auto='.1f', # Format text to one decimal place
+            color_discrete_map={
+                'Goal': '#00FF00',
+                'Shot (No Goal)': '#FFFF00',
+                'No Shot': '#FE6100'
+            }
+        )
+        fig_flank.update_traces(texttemplate='%{y:.1f}%', textposition='inside')
+        fig_flank.update_layout(template='plotly_dark', yaxis_ticksuffix='%')
         charts['flank_analysis'] = fig_flank
 
     return fig, charts
