@@ -262,6 +262,48 @@ def create_heatmap(event_data, team_name=None):
     ax.set_title(f'Heatmap for {team_name}', fontsize=16, pad=20, color='white')
     return fig
 
+def create_player_action_map(player_events, player_name, action_type):
+    """Creates a combined heatmap and scatter plot for a single player's actions."""
+    if player_events.empty:
+        st.warning(f"No {action_type.lower()} actions found for {player_name} in this match.")
+        return None
+
+    pitch = Pitch(pitch_type='wyscout', pitch_color='#22312b', line_color='#c7d5cc')
+    fig, ax = pitch.draw(figsize=(12, 8))
+    fig.set_facecolor('#22312b')
+    ax.set_title(f'{player_name} - {action_type} Actions', fontsize=16, pad=20, color='white')
+
+    # 1. Create the Heatmap
+    bin_statistic = pitch.bin_statistic(player_events['location.x'], player_events['location.y'], statistic='count', bins=(20, 25))
+    bin_statistic['statistic'] = gaussian_filter(bin_statistic['statistic'], 1)
+    pitch.heatmap(bin_statistic, ax=ax, cmap='Reds', edgecolors='#22312b', alpha=0.6)
+
+    # 2. Overlay the Scatter Plot of individual actions
+    action_markers = {
+        'interception': {'marker': 'x', 'color': '#648FFF', 'label': 'Interception'},
+        'tackle': {'marker': 's', 'color': '#FE6100', 'label': 'Successful Tackle'},
+        'clearance': {'marker': '^', 'color': '#FFB000', 'label': 'Clearance'},
+        'block': {'marker': 'p', 'color': '#785EF0', 'label': 'Block'},
+        'shot': {'marker': '*', 'color': '#DC267F', 'label': 'Shot'},
+        'pass': {'marker': 'o', 'color': 'cyan', 'label': 'Key Pass'}, # Example for offensive
+        'dribble': {'marker': 'h', 'color': 'lightgreen', 'label': 'Dribble'} # Example for offensive
+    }
+    
+    legend_elements = []
+    for action, style in action_markers.items():
+        action_df = player_events[player_events['type.primary'] == action]
+        if not action_df.empty:
+            pitch.scatter(action_df['location.x'], action_df['location.y'],
+                          s=120, ax=ax, marker=style['marker'],
+                          facecolor='none', edgecolors=style['color'], lw=2, label=style['label'])
+            legend_elements.append(plt.Line2D([0], [0], marker=style['marker'], color='w', label=style['label'],
+                                              markerfacecolor='none', markeredgecolor=style['color'], markersize=10, mew=2))
+
+    if legend_elements:
+        ax.legend(handles=legend_elements, loc='upper left', facecolor='#22312b', edgecolor='white', labelcolor='white')
+
+    return fig
+
 def create_detailed_shot_map(shot_data, team_name):
     """Creates a detailed shot map with accompanying statistical charts."""
     if shot_data.empty:
@@ -504,7 +546,7 @@ def download_plotly(fig, filename):
 # --- APP LAYOUT ---
 st.markdown('<h1 class="main-header">⚽ Superliga Analytics Dashboard</h1>', unsafe_allow_html=True)
 st.sidebar.title("Navigation")
-analysis_type = st.sidebar.selectbox("Select Analysis Type", ["Team Statistics", "Player Analysis", "Pizza Plots", "Event Data Analysis", "Pass Maps", "Shot Maps", "Pass Networks", "Heatmaps", "Physical Analysis"])
+analysis_type = st.sidebar.selectbox("Select Analysis Type", ["Team Statistics", "Player Analysis", "Pizza Plots", "Event Data Analysis", "Player Actions Analysis""Pass Maps", "Shot Maps", "Pass Networks", "Heatmaps", "Physical Analysis"])
 
 st.sidebar.markdown("### Upload Data Files")
 uploaded_files = {}
@@ -1176,6 +1218,7 @@ elif analysis_type in ["Event Data Analysis", "Pass Maps", "Shot Maps", "Pass Ne
             else:
                 st.warning("The event data must contain 'matchId' and 'team.name' columns.")
 
+
         elif analysis_type in ["Pass Maps", "Shot Maps", "Pass Networks", "Heatmaps"]:
             if 'matchId' in event_data.columns and 'team.name' in event_data.columns:
                 match_labels = {}
@@ -1221,4 +1264,69 @@ elif analysis_type in ["Event Data Analysis", "Pass Maps", "Shot Maps", "Pass Ne
                 st.warning("The event data must contain 'matchId' and 'team.name' columns.")
     else:
         st.info("Please upload an event data CSV file to begin analysis.")
+elif analysis_type == "Player Actions Analysis":
+    st.markdown('<h2 class="sub-header">Player Actions Analysis</h2>', unsafe_allow_html=True)
+    st.info("ℹ️ This tool uses the 'Event Data' file. Please ensure it's uploaded.")
+
+    if uploaded_files.get('event_data') is not None:
+        event_data = pd.read_csv(uploaded_files['event_data'])
         
+        if 'matchId' in event_data.columns and 'team.name' in event_data.columns and 'player.name' in event_data.columns:
+            # --- Match and Player Selection ---
+            match_labels = {}
+            for match_id in event_data['matchId'].unique():
+                teams = event_data[event_data['matchId'] == match_id]['team.name'].unique()
+                match_labels[match_id] = f"{teams[0]} vs {teams[1]}" if len(teams) == 2 else f"Match ID: {match_id}"
+
+            selected_label = st.selectbox("First, select a match to analyze", list(match_labels.values()), key="paa_match")
+            selected_match_id = [mid for mid, label in match_labels.items() if label == selected_label][0]
+            match_df = event_data[event_data['matchId'] == selected_match_id].copy()
+            
+            player_list = sorted(match_df['player.name'].dropna().unique())
+            selected_player = st.selectbox("Now, select a player to analyze", player_list, key="paa_player")
+            
+            # --- Action Type Selection ---
+            action_focus = st.radio("Select Action Focus:", ("Defensive", "Offensive"))
+
+            player_match_events = match_df[match_df['player.name'] == selected_player].copy()
+            
+            fig = None
+            if action_focus == "Defensive":
+                # Define and filter for successful defensive actions
+                team_events_sorted = match_df.sort_values(by=['minute', 'second']).reset_index(drop=True)
+                team_events_sorted['next_event_team'] = team_events_sorted['team.name'].shift(-1)
+                
+                player_events_sorted = team_events_sorted[team_events_sorted['player.name'] == selected_player]
+                
+                successful_tackles = player_events_sorted[
+                    (player_events_sorted['type.primary'] == 'tackle') &
+                    (player_events_sorted['team.name'] == player_events_sorted['next_event_team'])
+                ]
+                other_successful_actions = player_events_sorted[
+                    player_events_sorted['type.primary'].isin(['interception', 'clearance', 'block'])
+                ]
+                successful_defensive_events = pd.concat([successful_tackles, other_successful_actions])
+                
+                fig = create_player_action_map(successful_defensive_events, selected_player, "Defensive")
+
+            elif action_focus == "Offensive":
+                # Define and filter for key offensive actions
+                offensive_actions = player_match_events[
+                    player_match_events['type.primary'].isin(['shot', 'pass', 'dribble'])
+                ]
+                # For this example, we'll consider 'key passes' as our important pass type
+                key_passes = offensive_actions[offensive_actions['type.secondary'] == 'key_pass']
+                other_offensive_actions = offensive_actions[offensive_actions['type.primary'].isin(['shot', 'dribble'])]
+                
+                key_offensive_events = pd.concat([key_passes, other_offensive_actions])
+                
+                fig = create_player_action_map(key_offensive_events, selected_player, "Offensive")
+
+            if fig:
+                st.pyplot(fig)
+                st.markdown(download_plot(fig, f"player_action_map_{selected_player}"), unsafe_allow_html=True)
+
+        else:
+            st.warning("The event data must contain 'matchId', 'team.name', and 'player.name' columns.")
+    else:
+        st.info("Please upload an event data CSV file to begin analysis.")        
