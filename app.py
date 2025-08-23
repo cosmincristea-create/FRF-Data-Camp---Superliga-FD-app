@@ -1300,45 +1300,38 @@ elif analysis_type == "Player Actions Analysis":
             
             fig = None
             if action_focus == "Defensive":
-                # --- CORRECTED LOGIC ---
-                # 1. Sort the ENTIRE match's events to get the correct sequence
-                match_df_sorted = match_df.sort_values(by=['minute', 'second']).reset_index(drop=True)
-                match_df_sorted['next_event_team'] = match_df_sorted['team.name'].shift(-1)
+                # --- NEW, MORE RELIABLE LOGIC ---
+                # Define a clear list of defensive actions to plot
+                defensive_action_types = ['interception', 'clearance', 'block', 'tackle']
                 
-                # 2. Identify all successful tackles in the match
-                successful_tackles_all = match_df_sorted[
-                    (match_df_sorted['type.primary'] == 'tackle') &
-                    (match_df_sorted['team.name'] == match_df_sorted['next_event_team'])
+                # Filter the player's events for these specific actions
+                defensive_events_to_plot = player_match_events[
+                    player_match_events['type.primary'].isin(defensive_action_types)
                 ]
                 
-                # 3. Filter for the selected player's successful tackles
-                player_successful_tackles = successful_tackles_all[successful_tackles_all['player.name'] == selected_player]
-                
-                # 4. Get the player's other inherently successful actions
-                player_other_actions = player_match_events[
-                    player_match_events['type.primary'].isin(['interception', 'clearance', 'block'])
-                ]
-                
-                # 5. Combine them for the final plot
-                successful_defensive_events = pd.concat([player_successful_tackles, player_other_actions])
-                
-                fig = create_player_action_map(successful_defensive_events, selected_player, "Defensive")
+                fig = create_player_action_map(defensive_events_to_plot, selected_player, "Defensive")
 
             elif action_focus == "Offensive":
-                # Define and filter for key offensive actions
-                offensive_actions = player_match_events[
-                    player_match_events['type.primary'].isin(['shot', 'pass', 'dribble'])
+                # --- NEW, MORE RELIABLE LOGIC ---
+                # Define a clear list of key offensive actions
+                # We'll take all shots and dribbles, plus any pass that is marked as a 'key pass'
+                
+                # Get all shots and dribbles
+                shots_and_dribbles = player_match_events[
+                    player_match_events['type.primary'].isin(['shot', 'dribble'])
                 ]
-                # Make key pass search case-insensitive and handle missing column
+                
+                # Get key passes
                 key_passes = pd.DataFrame()
-                if 'type.secondary' in offensive_actions.columns:
-                    key_passes = offensive_actions[offensive_actions['type.secondary'].str.contains('key pass', case=False, na=False)]
-
-                other_offensive_actions = offensive_actions[offensive_actions['type.primary'].isin(['shot', 'dribble'])]
+                if 'type.secondary' in player_match_events.columns:
+                    key_passes = player_match_events[
+                        player_match_events['type.secondary'].str.contains('key pass', case=False, na=False)
+                    ]
                 
-                key_offensive_events = pd.concat([key_passes, other_offensive_actions])
+                # Combine them for the plot
+                offensive_events_to_plot = pd.concat([shots_and_dribbles, key_passes])
                 
-                fig = create_player_action_map(key_offensive_events, selected_player, "Offensive")
+                fig = create_player_action_map(offensive_events_to_plot, selected_player, "Offensive")
 
             if fig:
                 st.pyplot(fig)
