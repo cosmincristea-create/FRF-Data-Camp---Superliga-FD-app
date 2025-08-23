@@ -6,4 +6,4 @@ This app allows you to **visualise** different types of datasets, from player ad
 
 For **scouting** needs the app has an in-built pizza plot maker where you can either use the default template or make your own analysis from a 40+ list of recognised Wyscout metrics. You can go a step further and compare players using scatter plots by filtering through their position, club and a wide range of metrics to build an in-depth report for your scouting needs.
 
-Please note that this app was built to handle Wyscout data and the resulting csv files. Usage of other data providers will cause the app to crash. 
+_Please note that this app was built to handle Wyscout data and the resulting csv files. Usage of other data providers will cause the app to crash. _
