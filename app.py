@@ -1269,7 +1269,11 @@ elif analysis_type == "Player Actions Analysis":
     st.info("ℹ️ This tool uses the 'Event Data' file. Please ensure it's uploaded.")
 
     if uploaded_files.get('event_data') is not None:
-        event_data = pd.read_csv(uploaded_files['event_data'])
+        try:
+            event_data = pd.read_csv(uploaded_files['event_data'])
+        except Exception as e:
+            st.error(f"Error loading Event Data CSV: {e}")
+            st.stop()
         
         if 'matchId' in event_data.columns and 'team.name' in event_data.columns and 'player.name' in event_data.columns:
             # --- Match and Player Selection ---
@@ -1283,6 +1287,10 @@ elif analysis_type == "Player Actions Analysis":
             match_df = event_data[event_data['matchId'] == selected_match_id].copy()
             
             player_list = sorted(match_df['player.name'].dropna().unique())
+            if not player_list:
+                st.warning("No players found in the data for this match.")
+                st.stop()
+                
             selected_player = st.selectbox("Now, select a player to analyze", player_list, key="paa_player")
             
             # --- Action Type Selection ---
@@ -1292,20 +1300,27 @@ elif analysis_type == "Player Actions Analysis":
             
             fig = None
             if action_focus == "Defensive":
-                # Define and filter for successful defensive actions
-                team_events_sorted = match_df.sort_values(by=['minute', 'second']).reset_index(drop=True)
-                team_events_sorted['next_event_team'] = team_events_sorted['team.name'].shift(-1)
+                # --- CORRECTED LOGIC ---
+                # 1. Sort the ENTIRE match's events to get the correct sequence
+                match_df_sorted = match_df.sort_values(by=['minute', 'second']).reset_index(drop=True)
+                match_df_sorted['next_event_team'] = match_df_sorted['team.name'].shift(-1)
                 
-                player_events_sorted = team_events_sorted[team_events_sorted['player.name'] == selected_player]
+                # 2. Identify all successful tackles in the match
+                successful_tackles_all = match_df_sorted[
+                    (match_df_sorted['type.primary'] == 'tackle') &
+                    (match_df_sorted['team.name'] == match_df_sorted['next_event_team'])
+                ]
                 
-                successful_tackles = player_events_sorted[
-                    (player_events_sorted['type.primary'] == 'tackle') &
-                    (player_events_sorted['team.name'] == player_events_sorted['next_event_team'])
+                # 3. Filter for the selected player's successful tackles
+                player_successful_tackles = successful_tackles_all[successful_tackles_all['player.name'] == selected_player]
+                
+                # 4. Get the player's other inherently successful actions
+                player_other_actions = player_match_events[
+                    player_match_events['type.primary'].isin(['interception', 'clearance', 'block'])
                 ]
-                other_successful_actions = player_events_sorted[
-                    player_events_sorted['type.primary'].isin(['interception', 'clearance', 'block'])
-                ]
-                successful_defensive_events = pd.concat([successful_tackles, other_successful_actions])
+                
+                # 5. Combine them for the final plot
+                successful_defensive_events = pd.concat([player_successful_tackles, player_other_actions])
                 
                 fig = create_player_action_map(successful_defensive_events, selected_player, "Defensive")
 
@@ -1314,8 +1329,11 @@ elif analysis_type == "Player Actions Analysis":
                 offensive_actions = player_match_events[
                     player_match_events['type.primary'].isin(['shot', 'pass', 'dribble'])
                 ]
-                # For this example, we'll consider 'key passes' as our important pass type
-                key_passes = offensive_actions[offensive_actions['type.secondary'] == 'key_pass']
+                # Make key pass search case-insensitive and handle missing column
+                key_passes = pd.DataFrame()
+                if 'type.secondary' in offensive_actions.columns:
+                    key_passes = offensive_actions[offensive_actions['type.secondary'].str.contains('key pass', case=False, na=False)]
+
                 other_offensive_actions = offensive_actions[offensive_actions['type.primary'].isin(['shot', 'dribble'])]
                 
                 key_offensive_events = pd.concat([key_passes, other_offensive_actions])
@@ -1324,9 +1342,9 @@ elif analysis_type == "Player Actions Analysis":
 
             if fig:
                 st.pyplot(fig)
-                st.markdown(download_plot(fig, f"player_action_map_{selected_player}"), unsafe_allow_html=True)
+                st.markdown(download_plot(fig, f"player_action_map_{selected_player}_{action_focus}"), unsafe_allow_html=True)
 
         else:
             st.warning("The event data must contain 'matchId', 'team.name', and 'player.name' columns.")
     else:
-        st.info("Please upload an event data CSV file to begin analysis.")        
+        st.info("Please upload an event data CSV file to begin analysis.")
