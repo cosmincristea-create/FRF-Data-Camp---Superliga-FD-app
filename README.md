@@ -11,7 +11,7 @@ Usage of other data providers will cause the app to crash.
 
 Superliga Analytics Dashboard project documentation 
 
-1. Project overview & technical architecture
+**Project overview & technical architecture**
 The Superliga Analytics Dashboard is an interactive web application developed in Python, designed for the analysis of football data. The application is built on the Streamlit framework, which serves as the frontend for user interaction and visualisation rendering. 
 
 The core logic is centered around data processing and visualisation, handled by a suite of football specialised libraries:
