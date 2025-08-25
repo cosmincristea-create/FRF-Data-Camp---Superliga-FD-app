@@ -22,15 +22,15 @@ Interactive charting: **Plotly Express** is used for generating interactive data
 
 Football-specific visualisations: The **mplsoccer** library is used for creating bespoke pitch visualisations, including pass maps, shot maps, heatmaps, and pass networks. This library provides the necessary tools to accurately plot event data onto a Wyscout-standard pitch.
 
-2. Development chronology & Feature logic
+**Development chronology & Feature logic**
 The application was developed over three weeks, with functionality added in distinct, logical blocks. The app was built with the core purpose of being useful to a variety of stakeholders from coaching staff to recuritment analysts and higher level executives.
 
 Week 1: Core modules - Statistical analysis
 Objective: To establish the core functionality for high-level statistical analysis of seasonal data, processing the DataCamp Wyscout teams and event data Wyscout files.
 
-**Modules built:
-**
-Team & Player Statistics: The logic for these modules involves reading a statistics CSV into a Pandas DataFrame. A dictionary (metric_mapping) is used to translate raw column names from the source file into user-friendly labels. Visualisations are driven by user selections from** st.selectbox** widgets, which dynamically filter the DataFrame to generate rankings or create scatter plots comparing two selected metrics.
+****Modules built:****
+
+Team & Player Statistics: The logic for these modules involves reading a statistics CSV into a Pandas DataFrame. A dictionary (metric_mapping) is used to translate raw column names from the source file into user-friendly labels. Visualisations are driven by user selections from **st.selectbox** widgets, which dynamically filter the DataFrame to generate rankings or create scatter plots comparing two selected metrics.
 
 Week 2: Advanced visualisations & Event Data processing
 Objective: To give the app the tools to build summary statistics and begin processing granular, single-match event data.
@@ -52,14 +52,14 @@ Player Actions Analysis (beta): This feature aims to combine two visualisation t
 
 Bug fix - Inferring Duel Wins: A key challenge was the absence of an explicit "duel won" flag in the event data, as Wyscout does not track the success of a duel like Opta or StatsBomb. This meant that the app had to get clever when working with the duel data from the CSV files. The solution was to infer the outcome based on the event sequence. The entire match DataFrame is sorted by timestamp (minute, second), and a new column is created using pandas.DataFrame.shift(-1) to get the team associated with the subsequent event. A duel is then flagged as "won" if the team that initiated the duel is the same as the team of the next event, indicating a successful possession regain.
 
-3. Limitations & technical considerations
+**Limitations & technical considerations**
 Data Schema Dependency: The application's data processing logic is tightly coupled to the Wyscout data schema. Column names like type.primary, location.x, and pass.accurate are hard-coded. An upload from a different data provider (e.g., Opta, StatsBomb) would cause a KeyError and crash the app. A future improvement would be to implement a data mapping interface to abstract these column names.
 
 Scalability: The current implementation uses Pandas to load the entire user-uploaded CSV file into memory. This approach is efficient for single-match or single-season files but is not scalable to larger, multi-season datasets, which could lead to memory overflow issues on standard hosting environments. Future optimisation should explore more memory-efficient data processing backends like Polars or DuckDB.
 
 Analysis scope: All analysis is currently static and post-match. The application is not designed for live data ingestion or real-time analysis.
 
-4. Future Roadmap & potential upgrades
+**Future roadmap & potential upgrades**
 The current application serves as a strong foundation for several advanced features. We believe this app is useful in a plug-and-play scenario for different stakeholders.
 
 Time-series & Trend analysis: Implement functionality to track key metrics over time. This would involve grouping data by match date and plotting metrics over a rolling window (e.g., a 5-game rolling average of a team's xG) to visualise performance trends. This would allow coaching staff members to asses team performance during the season and have data embedded in their training periodisation workflows.
